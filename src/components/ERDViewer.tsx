@@ -1,4 +1,11 @@
-import React, { useCallback, useRef, useEffect, useState } from "react";
+import React, {
+  useCallback,
+  useRef,
+  useEffect,
+  useState,
+  useMemo,
+  ChangeEvent,
+} from "react";
 import { useNavigate } from "react-router-dom";
 import ReactFlow, {
   Background,
@@ -9,6 +16,11 @@ import ReactFlow, {
   Panel,
   useReactFlow,
   MarkerType,
+  addEdge,
+  Connection,
+  Edge,
+  Node,
+  getViewportForBounds,
 } from "reactflow";
 import {
   Download,
@@ -18,6 +30,8 @@ import {
   Plus,
   Settings,
   Eye,
+  Table,
+  Link as LinkIcon,
 } from "lucide-react";
 import { toPng } from "html-to-image";
 import { TableNode } from "./TableNode";
@@ -37,15 +51,37 @@ import { Textarea } from "@/components/ui/textarea";
 import "reactflow/dist/style.css";
 import { useERDState } from "@/hooks/useERDState";
 import { TableBulkEdit } from "./TableBulkEdit";
+import { TableEditor, TableEditorData, TABLE_COLORS } from "./TableEditor";
 
-const nodeTypes = {
-  tableNode: TableNode,
+// Move these outside the component and memoize the objects
+const defaultEdgeStyle = {
+  stroke: "#2563eb",
+  strokeWidth: 2,
 };
+
+const defaultEdgeOptions = {
+  type: "smoothstep",
+  style: defaultEdgeStyle,
+  animated: true,
+  markerEnd: {
+    type: MarkerType.Arrow,
+    width: 20,
+    height: 20,
+    color: "#2563eb",
+  },
+} as const;
+
+interface EdgeData {
+  relationship: string;
+}
 
 export function ERDViewer() {
   const navigate = useNavigate();
   const { currentView, updateView, views, createView, deleteView } =
     useERDState();
+
+  console.log("[ERDViewer] Component rendered with currentView:", currentView);
+
   const [nodes, setNodes, onNodesChange] = useNodesState(
     currentView?.data.nodes ?? []
   );
@@ -59,14 +95,32 @@ export function ERDViewer() {
   const [isCreateViewOpen, setIsCreateViewOpen] = useState(false);
   const [newViewName, setNewViewName] = useState("");
   const [newViewDescription, setNewViewDescription] = useState("");
+  const [isCreateTableOpen, setIsCreateTableOpen] = useState(false);
+  const [newTable, setNewTable] = useState<TableEditorData>({
+    name: "",
+    displayName: "",
+    description: "",
+    columns: [{ name: "", type: "", isPrimaryKey: false }],
+    color: "#2563eb", // default blue
+  });
+  const [isCreatingRelation, setIsCreatingRelation] = useState(false);
 
   const flowRef = useRef<HTMLDivElement>(null);
-  const { fitView, zoomIn } = useReactFlow();
+  const { fitView, zoomIn, getViewport } = useReactFlow();
+
+  // Wrap updateView to add logging
+  const wrappedUpdateView = useCallback(
+    (view) => {
+      console.log("[ERDViewer] wrappedUpdateView called with:", view);
+      updateView(view);
+      console.log("[ERDViewer] wrappedUpdateView completed");
+    },
+    [updateView]
+  );
 
   // Update nodes and edges when current view changes
   useEffect(() => {
     if (currentView) {
-      console.log("Setting nodes:", currentView.data.nodes); // Debug log
       setNodes(currentView.data.nodes);
       setEdges(currentView.data.edges);
       setFilter(currentView.data.filter ?? "");
@@ -175,6 +229,193 @@ export function ERDViewer() {
     setNewViewDescription(e.target.value);
   };
 
+  // Add view refresh after table edit
+  const handleViewUpdate = useCallback(
+    (updatedView: any) => {
+      if (!currentView) {
+        console.log("[ERDViewer] No current view found");
+        return;
+      }
+
+      console.log("[ERDViewer] Starting view update with:", updatedView);
+
+      try {
+        // Create completely new references for all nodes
+        const newNodes = updatedView.data.nodes.map((node) => {
+          console.log("[ERDViewer] Processing node:", node);
+          const newNode = {
+            id: node.id,
+            type: "tableNode",
+            position: { ...node.position },
+            data: { ...node.data },
+          };
+          console.log("[ERDViewer] Created new node reference:", newNode);
+          return newNode;
+        });
+
+        console.log("[ERDViewer] All new node references created:", newNodes);
+
+        // Create new references for edges
+        const newEdges = updatedView.data.edges.map((edge) => {
+          console.log("[ERDViewer] Processing edge:", edge);
+          const newEdge = {
+            ...edge,
+            id: edge.id,
+            source: edge.source,
+            target: edge.target,
+          };
+          console.log("[ERDViewer] Created new edge reference:", newEdge);
+          return newEdge;
+        });
+
+        console.log("[ERDViewer] All new edge references created:", newEdges);
+
+        // Update the view in state
+        const finalView = {
+          ...updatedView,
+          data: {
+            ...updatedView.data,
+            nodes: newNodes,
+            edges: newEdges,
+          },
+        };
+
+        console.log("[ERDViewer] Final view to be updated:", finalView);
+        console.log("[ERDViewer] Calling updateView");
+        wrappedUpdateView(finalView);
+
+        console.log("[ERDViewer] Setting nodes in React Flow");
+        setNodes(newNodes);
+        console.log("[ERDViewer] Setting edges in React Flow");
+        setEdges(newEdges);
+
+        // Center view after a short delay
+        console.log("[ERDViewer] Scheduling view fit");
+        setTimeout(() => {
+          console.log("[ERDViewer] Fitting view to content");
+          fitView({ padding: 0.2, duration: 200 });
+        }, 100);
+      } catch (error) {
+        console.error("[ERDViewer] Error in handleViewUpdate:", error);
+      }
+    },
+    [currentView, wrappedUpdateView, setNodes, setEdges, fitView]
+  );
+
+  // Define nodeTypes with stable reference
+  const nodeTypes = useMemo(
+    () => ({
+      tableNode: (props: any) => (
+        <TableNode {...props} onViewUpdate={handleViewUpdate} />
+      ),
+    }),
+    []
+  );
+
+  // Update handleAddTable to include displayName
+  const handleAddTable = useCallback(() => {
+    if (!currentView || !newTable.name.trim()) return;
+
+    const { x: viewX, y: viewY, zoom } = getViewport();
+    const { width, height } = flowRef.current?.getBoundingClientRect() || {
+      width: 1000,
+      height: 800,
+    };
+
+    // Calculate position in the center of the current viewport
+    const position = {
+      x: (width / 2 - viewX) / zoom,
+      y: (height / 2 - viewY) / zoom,
+    };
+
+    const newNode = {
+      id: crypto.randomUUID(),
+      type: "tableNode",
+      position,
+      data: {
+        name: newTable.name,
+        label: newTable.name,
+        displayName: newTable.displayName || newTable.name,
+        description: newTable.description,
+        color: newTable.color,
+        columns: newTable.columns.map((col) => ({
+          name: col.name,
+          type: col.type,
+          constraints: col.isPrimaryKey ? "PRIMARY KEY" : undefined,
+        })),
+      },
+    };
+
+    // Create updated view with new node
+    const updatedView = {
+      ...currentView,
+      data: {
+        ...currentView.data,
+        nodes: [...currentView.data.nodes, newNode],
+      },
+    };
+
+    // Use handleViewUpdate to ensure consistent update behavior
+    handleViewUpdate(updatedView);
+
+    // Reset form
+    setNewTable({
+      name: "",
+      displayName: "",
+      description: "",
+      columns: [{ name: "", type: "", isPrimaryKey: false }],
+      color: "#2563eb",
+    });
+    setIsCreateTableOpen(false);
+  }, [currentView, newTable, getViewport, handleViewUpdate]);
+
+  // Handle creating relationships between tables
+  const onConnect = useCallback(
+    (params: Connection) => {
+      if (!params.source || !params.target) return;
+
+      const newEdge: Edge<EdgeData> = {
+        id: `${params.source}-${params.target}`,
+        source: params.source,
+        target: params.target,
+        sourceHandle: params.sourceHandle,
+        targetHandle: params.targetHandle,
+        type: "smoothstep",
+        animated: true,
+        style: defaultEdgeStyle,
+        markerEnd: {
+          type: MarkerType.Arrow,
+          width: 20,
+          height: 20,
+          color: "#2563eb",
+        },
+        data: { relationship: "1:n" },
+      };
+
+      setEdges((edges) => addEdge(newEdge, edges));
+    },
+    [setEdges]
+  );
+
+  // Update existing edges to have consistent style
+  useEffect(() => {
+    if (currentView) {
+      const updatedEdges = currentView.data.edges.map((edge) => ({
+        ...edge,
+        type: "smoothstep",
+        animated: true,
+        style: defaultEdgeStyle,
+        markerEnd: {
+          type: MarkerType.Arrow,
+          width: 20,
+          height: 20,
+          color: "#2563eb",
+        },
+      }));
+      setEdges(updatedEdges);
+    }
+  }, [currentView, setEdges]);
+
   return (
     <div className="flex h-screen">
       <ViewSidebar
@@ -190,7 +431,7 @@ export function ERDViewer() {
           setEdges(view.data.edges);
           setFilter(view.data.filter ?? "");
           setHidePrefix(view.data.hidePrefix ?? []);
-          updateView(view);
+          handleViewUpdate(view);
         }}
         onViewDelete={deleteView}
         onCreateView={handleCreateView}
@@ -215,6 +456,24 @@ export function ERDViewer() {
           >
             <Plus className="w-4 h-4 mr-2" />
             Save as New View
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setIsCreateTableOpen(true)}
+            className="h-8"
+          >
+            <Table className="w-4 h-4 mr-2" />
+            Add Table
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setIsCreatingRelation(!isCreatingRelation)}
+            className={`h-8 ${isCreatingRelation ? "bg-blue-100" : ""}`}
+          >
+            <LinkIcon className="w-4 h-4 mr-2" />
+            {isCreatingRelation ? "Cancel Link" : "Link Tables"}
           </Button>
           <Button
             variant="ghost"
@@ -276,23 +535,11 @@ export function ERDViewer() {
           edges={edges}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
+          onConnect={onConnect}
           nodeTypes={nodeTypes}
           fitView
           fitViewOptions={{ padding: 0.2 }}
-          defaultEdgeOptions={{
-            type: "smoothstep",
-            style: {
-              stroke: "#94a3b8",
-              strokeWidth: 2,
-              opacity: 0.8,
-            },
-            markerEnd: {
-              type: MarkerType.Arrow,
-              color: "#94a3b8",
-              width: 20,
-              height: 20,
-            },
-          }}
+          defaultEdgeOptions={defaultEdgeOptions}
         >
           <Background color="#aaa" gap={16} />
           <Controls className="controls bg-white shadow-lg rounded-lg" />
@@ -357,6 +604,29 @@ export function ERDViewer() {
                 Create View
               </Button>
             </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog
+          open={isCreateTableOpen}
+          onOpenChange={(open: boolean) => setIsCreateTableOpen(open)}
+        >
+          <DialogContent className="sm:max-w-[800px]">
+            <DialogHeader>
+              <DialogTitle>Create New Table</DialogTitle>
+              <DialogDescription>
+                Add a new table to your ERD. Define its name, description, and
+                columns.
+              </DialogDescription>
+            </DialogHeader>
+            <TableEditor
+              data={newTable}
+              onChange={setNewTable}
+              onSave={handleAddTable}
+              onCancel={() => setIsCreateTableOpen(false)}
+              title="Create New Table"
+              saveLabel="Create Table"
+            />
           </DialogContent>
         </Dialog>
       </div>

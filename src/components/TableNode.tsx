@@ -1,10 +1,15 @@
 import React, { memo, useState } from "react";
 import { Handle, Position } from "reactflow";
 import { useERDState } from "@/hooks/useERDState";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Button } from "@/components/ui/button";
-import { Edit2, Check } from "lucide-react";
+import { Edit2 } from "lucide-react";
+import { TableEditor, TableEditorData } from "./TableEditor";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 
 interface ColumnProps {
   name: string;
@@ -52,9 +57,11 @@ const Column = memo(
 Column.displayName = "Column";
 
 interface TableData {
+  name: string;
   label: string;
   displayName?: string;
   description?: string;
+  color?: string;
   columns: {
     name: string;
     type: string;
@@ -63,138 +70,176 @@ interface TableData {
   }[];
 }
 
-export const TableNode = memo(
-  ({ data, id }: { data: TableData; id: string }) => {
-    const { currentView, updateView } = useERDState();
-    const showFields = currentView?.settings?.showFields;
-    const [isEditing, setIsEditing] = useState(false);
-    const [displayName, setDisplayName] = useState(
-      data.displayName || data.label
-    );
-    const [description, setDescription] = useState(
-      data.description ||
-        "A User is an abstract entity that comprises of Credentials and Roles for an Actor to access a functionality of the Platform."
-    );
+interface TableNodeProps {
+  data: TableData;
+  id: string;
+  onViewUpdate?: (view: any) => void;
+}
 
-    const handleSave = () => {
-      if (!currentView) return;
+export const TableNode = memo(({ data, id, onViewUpdate }: TableNodeProps) => {
+  const { currentView, updateView } = useERDState();
+  const showFields = currentView?.settings?.showFields;
+  const [isEditing, setIsEditing] = useState(false);
+  const [editData, setEditData] = useState<TableEditorData>({
+    name: data.name || data.label || "",
+    displayName: data.displayName || data.name || data.label || "",
+    description: data.description || "",
+    color: data.color || "#2563eb",
+    columns: data.columns.map((col) => ({
+      name: col.name || "",
+      type: col.type || "",
+      isPrimaryKey: col.constraints?.includes("PRIMARY KEY") || false,
+    })),
+  });
 
-      const updatedNodes = currentView.data.nodes.map((node) => {
-        if (node.id === id) {
-          return {
-            ...node,
-            data: {
-              ...node.data,
-              displayName,
-              description,
-            },
-          };
-        }
-        return node;
-      });
+  const handleSave = () => {
+    if (!currentView) {
+      console.log("[TableNode] No current view found");
+      return;
+    }
 
-      updateView({
-        ...currentView,
-        data: {
-          ...currentView.data,
-          nodes: updatedNodes,
-        },
-      });
+    console.log("[TableNode] Starting save with editData:", editData);
+    console.log("[TableNode] Current view nodes:", currentView.data.nodes);
 
-      setIsEditing(false);
-    };
-
-    const getCardinalityDisplay = (cardinality?: string) => {
-      if (!cardinality) return "";
-      switch (cardinality) {
-        case "1:1":
-          return "1";
-        case "1:n":
-          return "∞";
-        case "n:1":
-          return "1";
-        case "n:n":
-          return "∞";
-        default:
-          return cardinality;
+    // Create updated node with new data
+    const updatedNodes = currentView.data.nodes.map((node) => {
+      if (node.id === id) {
+        console.log("[TableNode] Found node to update:", node);
+        // Create a completely new node object to force React Flow to update
+        const updatedNode = {
+          id: node.id,
+          type: "tableNode",
+          position: { ...node.position }, // Create new position reference
+          data: {
+            name: editData.name,
+            label: editData.name,
+            displayName: editData.displayName,
+            description: editData.description,
+            color: editData.color,
+            columns: editData.columns.map((col) => ({
+              name: col.name,
+              type: col.type,
+              constraints: col.isPrimaryKey ? "PRIMARY KEY" : undefined,
+            })),
+          },
+        };
+        console.log("[TableNode] Created updated node:", updatedNode);
+        return updatedNode;
       }
+      return { ...node, data: { ...node.data } }; // Create new references for other nodes too
+    });
+
+    console.log("[TableNode] All nodes after update:", updatedNodes);
+
+    // Create updated view with new nodes
+    const updatedView = {
+      ...currentView,
+      updatedAt: Date.now(),
+      data: {
+        ...currentView.data,
+        nodes: updatedNodes,
+      },
     };
 
-    return (
-      <div className="bg-white rounded-lg shadow-lg border border-gray-200 min-w-[400px]">
-        <Handle type="target" position={Position.Top} className="w-2 h-2" />
-        <div className="border-b border-gray-200 rounded-lg max-w-md">
-          {isEditing ? (
-            <div className="space-y-2">
-              <Input
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-                placeholder="Display Name"
-                className="bg-white"
-              />
-              <Textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Description"
-                className="bg-white text-sm"
-                rows={2}
-              />
-              <div className="flex justify-end">
-                <Button size="sm" onClick={handleSave}>
-                  <Check className="w-4 h-4" />
-                  Save
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <div
-              className="cursor-pointer group"
-              onClick={() => setIsEditing(true)}
-            >
-              <div className="flex items-center justify-between mb-2 px-4 pt-2 bg-blue-700 rounded-t-lg">
-                <h3 className="font-bold text-white text-3xl mb-2">
-                  {displayName || data.label}
-                </h3>
-                <Edit2 className="w-4 h-4 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
-              </div>
-              <p className=" text-gray-900 text-2xl px-4 py-4">{description}</p>
-            </div>
-          )}
-        </div>
-        {showFields && (
-          <div className="px-4 py-2">
-            {data.columns.map((column, index) => (
-              <div
-                key={column.name}
-                className={`py-2 text-sm ${
-                  index !== data.columns.length - 1
-                    ? "border-b border-gray-100"
-                    : ""
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="text-gray-700 font-medium">
-                      {column.name}
-                    </span>
-                    {column.cardinality && (
-                      <span className="text-xs text-blue-600 font-semibold">
-                        {column.cardinality}
-                      </span>
-                    )}
-                  </div>
-                  <span className="text-gray-500 text-xs bg-gray-50 px-2 py-1 rounded">
-                    {column.type}
-                  </span>
-                </div>
-              </div>
-            ))}
+    console.log("[TableNode] Created updated view:", updatedView);
+
+    // Close dialog and update view
+    setIsEditing(false);
+    console.log("[TableNode] Dialog closed, about to update view");
+
+    // Update view after a short delay to ensure dialog state is updated
+    setTimeout(() => {
+      console.log("[TableNode] Calling updateView with data:", updatedView);
+      try {
+        if (onViewUpdate) {
+          console.log("[TableNode] Using onViewUpdate handler");
+          onViewUpdate(updatedView);
+        } else {
+          console.log("[TableNode] Using direct updateView");
+          updateView(updatedView);
+        }
+        console.log("[TableNode] updateView call completed");
+      } catch (error) {
+        console.error("[TableNode] Error in updateView:", error);
+      }
+    }, 0);
+  };
+
+  return (
+    <div className="bg-white rounded-lg shadow-lg border border-gray-200 min-w-[400px]">
+      <Handle type="target" position={Position.Top} className="w-2 h-2" />
+      <div className="border-b border-gray-200 rounded-lg max-w-md">
+        <div
+          className="cursor-pointer group"
+          onClick={() => setIsEditing(true)}
+        >
+          <div
+            className="flex items-center justify-between mb-2 px-4 pt-2 rounded-t-lg"
+            style={{ backgroundColor: data.color || "#2563eb" }}
+          >
+            <h3 className="font-bold text-white text-3xl mb-2">
+              {data.displayName || data.name || data.label}
+            </h3>
+            <Edit2 className="w-4 h-4 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
           </div>
-        )}
-        <Handle type="source" position={Position.Bottom} className="w-2 h-2" />
+          <p className="text-gray-900 text-2xl px-4 py-4">{data.description}</p>
+        </div>
       </div>
-    );
-  }
-);
+      {showFields && (
+        <div className="px-4 py-2">
+          {data.columns.map((column, index) => (
+            <div
+              key={column.name}
+              className={`py-2 text-sm ${
+                index !== data.columns.length - 1
+                  ? "border-b border-gray-100"
+                  : ""
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  {column.constraints?.includes("PRIMARY KEY") && (
+                    <span className="text-yellow-500 text-sm font-mono">
+                      PK
+                    </span>
+                  )}
+                  <span className="text-gray-700 font-medium">
+                    {column.name}
+                  </span>
+                  {column.cardinality && (
+                    <span className="text-xs text-blue-600 font-semibold">
+                      {column.cardinality}
+                    </span>
+                  )}
+                </div>
+                <span className="text-gray-500 text-xs bg-gray-50 px-2 py-1 rounded">
+                  {column.type}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      <Handle type="source" position={Position.Bottom} className="w-2 h-2" />
+
+      <Dialog open={isEditing} onOpenChange={setIsEditing}>
+        <DialogContent className="sm:max-w-[800px]">
+          <DialogHeader>
+            <DialogTitle>Edit Table</DialogTitle>
+            <DialogDescription>
+              Modify the table's properties and columns.
+            </DialogDescription>
+          </DialogHeader>
+          <TableEditor
+            data={editData}
+            onChange={setEditData}
+            onSave={handleSave}
+            onCancel={() => setIsEditing(false)}
+          />
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+});
 
 TableNode.displayName = "TableNode";
