@@ -16,20 +16,20 @@ import {
   Clock,
   Star,
 } from "lucide-react";
-import { ERDView } from "@/types";
+import { DiagramView, DiagramType } from "@/types";
 import { Textarea } from "@/components/ui/textarea";
 
 interface ViewSidebarProps {
   filter: string;
-  setFilter: (value: string) => void;
-  hidePrefix: string[];
-  togglePrefix: (prefix: string) => void;
-  onSaveView: () => void;
-  currentView: ERDView | null;
-  views: ERDView[];
-  onViewSelect: (view: ERDView) => void;
-  onViewDelete: (viewId: string) => void;
-  onCreateView: (name: string, description: string) => void;
+  onFilterChange: (value: string) => void;
+  hidePrefix?: string[];
+  togglePrefix?: (prefix: string) => void;
+  onSaveView?: () => void;
+  currentView: DiagramView | null;
+  views?: DiagramView[];
+  onViewSelect?: (view: DiagramView) => void;
+  onViewDelete?: (viewId: string) => void;
+  onCreateView?: (name: string, description: string) => void;
 }
 
 const COMMON_PREFIXES = [
@@ -51,8 +51,8 @@ type SortOption = (typeof SORT_OPTIONS)[number]["id"];
 
 export function ViewSidebar({
   filter,
-  setFilter,
-  hidePrefix,
+  onFilterChange,
+  hidePrefix = [],
   togglePrefix,
   onSaveView,
   currentView,
@@ -66,6 +66,9 @@ export function ViewSidebar({
   const [isCreatingView, setIsCreatingView] = useState(false);
   const [newViewName, setNewViewName] = useState("");
   const [newViewDescription, setNewViewDescription] = useState("");
+
+  const isERD = currentView?.type === DiagramType.ERD;
+  const isArchitecture = currentView?.type === DiagramType.ARCHITECTURE;
 
   // Filter and sort views
   const filteredViews = useMemo(() => {
@@ -103,12 +106,14 @@ export function ViewSidebar({
       <div className="p-6 border-b bg-white">
         <div className="flex justify-between items-start mb-2">
           <div>
-            <h2 className="text-lg font-semibold">ERD Explorer</h2>
+            <h2 className="text-lg font-semibold">
+              {isArchitecture ? "Architecture Explorer" : "ERD Explorer"}
+            </h2>
             <p className="text-sm text-gray-500">
               {currentView?.name || "Select a view"}
             </p>
           </div>
-          {currentView && (
+          {currentView && onSaveView && (
             <Button
               size="sm"
               onClick={(e) => {
@@ -263,7 +268,7 @@ export function ViewSidebar({
                       className="flex gap-1"
                       onClick={(e) => e.stopPropagation()}
                     >
-                      {currentView?.id === view.id && (
+                      {currentView?.id === view.id && onSaveView && (
                         <Button
                           variant="ghost"
                           size="sm"
@@ -276,17 +281,19 @@ export function ViewSidebar({
                           <Save className="w-4 h-4" />
                         </Button>
                       )}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="opacity-0 group-hover:opacity-100 h-8"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onViewDelete(view.id);
-                        }}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
+                      {onViewDelete && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="opacity-0 group-hover:opacity-100 h-8"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onViewDelete(view.id);
+                          }}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -304,45 +311,51 @@ export function ViewSidebar({
               {/* Search Section */}
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <Label className="text-sm font-medium">Search Tables</Label>
+                  <Label className="text-sm font-medium">
+                    Search {isArchitecture ? "Components" : "Tables"}
+                  </Label>
                   <Search className="w-4 h-4 text-gray-500" />
                 </div>
                 <Input
                   placeholder="Type to search..."
                   value={filter}
-                  onChange={(e) => setFilter(e.target.value)}
+                  onChange={(e) => onFilterChange(e.target.value)}
                   className="w-full"
                 />
               </div>
 
-              <Separator />
+              {isERD && (
+                <>
+                  <Separator />
 
-              {/* Filters Section */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <Label className="text-sm font-medium">Table Groups</Label>
-                  <Filter className="w-4 h-4 text-gray-500" />
-                </div>
-                <div className="space-y-2">
-                  {COMMON_PREFIXES.map(({ id, label, prefix }) => (
-                    <Button
-                      key={id}
-                      variant={
-                        hidePrefix.includes(prefix) ? "secondary" : "outline"
-                      }
-                      className="w-full justify-start"
-                      onClick={() => togglePrefix(prefix)}
-                    >
-                      {hidePrefix.includes(prefix) ? (
-                        <EyeOff className="w-4 h-4 mr-2 text-gray-500" />
-                      ) : (
-                        <Eye className="w-4 h-4 mr-2 text-gray-500" />
-                      )}
-                      {label}
-                    </Button>
-                  ))}
-                </div>
-              </div>
+                  {/* ERD-specific Filters Section */}
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm font-medium">Table Groups</Label>
+                      <Filter className="w-4 h-4 text-gray-500" />
+                    </div>
+                    <div className="space-y-2">
+                      {COMMON_PREFIXES.map(({ id, label, prefix }) => (
+                        <Button
+                          key={id}
+                          variant={
+                            hidePrefix.includes(prefix) ? "secondary" : "outline"
+                          }
+                          className="w-full justify-start"
+                          onClick={() => togglePrefix?.(prefix)}
+                        >
+                          {hidePrefix.includes(prefix) ? (
+                            <EyeOff className="w-4 h-4 mr-2 text-gray-500" />
+                          ) : (
+                            <Eye className="w-4 h-4 mr-2 text-gray-500" />
+                          )}
+                          {label}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           </ScrollArea>
         </TabsContent>
