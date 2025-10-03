@@ -1,0 +1,144 @@
+import React, { memo, useState } from "react";
+import { Handle, Position } from "reactflow";
+import { Edit2 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { ArchitectureNodeEditor, ArchitectureNodeData } from "./ArchitectureNodeEditor";
+import { useERDState } from "@/hooks/useERDState";
+
+interface ArchitectureNodeProps {
+  data: {
+    title: string;
+    description: string;
+    icon: string;
+    color?: string;
+  };
+  id: string;
+  onViewUpdate?: (view: any) => void;
+}
+
+export const ArchitectureNode = memo(({ data, id }: ArchitectureNodeProps) => {
+  const { currentView, updateView } = useERDState();
+  const [isEditing, setIsEditing] = useState(false);
+  const [editData, setEditData] = useState<ArchitectureNodeData>({
+    title: data.title || "",
+    description: data.description || "",
+    icon: data.icon || "Server",
+    color: data.color || "#2563eb",
+  });
+
+  const handleSave = (updatedData: ArchitectureNodeData) => {
+    if (!currentView) {
+      console.log("[ArchitectureNode] No current view found");
+      return;
+    }
+
+    console.log("[ArchitectureNode] Starting save with updatedData:", updatedData);
+
+    // Create updated nodes with new data
+    const updatedNodes = currentView.data.nodes.map((node) => {
+      if (node.id === id) {
+        console.log("[ArchitectureNode] Found node to update:", node);
+        // Create a completely new node object to force React Flow to update
+        const updatedNode = {
+          id: node.id,
+          type: "architectureNode",
+          position: { ...node.position }, // Create new position reference
+          data: {
+            title: updatedData.title,
+            description: updatedData.description,
+            icon: updatedData.icon,
+            color: updatedData.color,
+          },
+        };
+        console.log("[ArchitectureNode] Created updated node:", updatedNode);
+        return updatedNode;
+      }
+      return { ...node, data: { ...node.data } }; // Create new references for other nodes too
+    });
+
+    console.log("[ArchitectureNode] All nodes after update:", updatedNodes);
+
+    // Create updated view with new nodes
+    const updatedView = {
+      ...currentView,
+      updatedAt: Date.now(),
+      data: {
+        ...currentView.data,
+        nodes: updatedNodes,
+      },
+    };
+
+    console.log("[ArchitectureNode] Created updated view:", updatedView);
+
+    // Close dialog and update view
+    setIsEditing(false);
+    console.log("[ArchitectureNode] Dialog closed, about to update view");
+    updateView(updatedView);
+  };
+
+  return (
+    <div className="group relative">
+      <Handle type="target" position={Position.Top} />
+      <Handle type="source" position={Position.Bottom} />
+      <Handle type="target" position={Position.Left} />
+      <Handle type="source" position={Position.Right} />
+      
+      <div
+        className="min-w-[200px] max-w-[300px] bg-white border-2 rounded-lg shadow-lg cursor-pointer hover:shadow-xl transition-shadow"
+        style={{ borderColor: data.color || "#2563eb" }}
+        onClick={() => setIsEditing(true)}
+      >
+        <div
+          className="flex items-center justify-between px-4 py-3 rounded-t-lg"
+          style={{ backgroundColor: data.color || "#2563eb" }}
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center text-white text-lg">
+              {data.icon === "Server" && "🖥️"}
+              {data.icon === "Database" && "🗄️"}
+              {data.icon === "Cloud" && "☁️"}
+              {data.icon === "Mobile" && "📱"}
+              {data.icon === "Web" && "🌐"}
+              {data.icon === "API" && "🔌"}
+              {data.icon === "Security" && "🔒"}
+              {data.icon === "Analytics" && "📊"}
+              {data.icon === "Storage" && "💾"}
+              {data.icon === "Network" && "🌐"}
+            </div>
+            <h3 className="font-bold text-white text-lg">
+              {data.title || "Component"}
+            </h3>
+          </div>
+          <Edit2 className="w-4 h-4 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+        </div>
+        
+        <div className="px-4 py-3">
+          <p className="text-gray-700 text-sm leading-relaxed">
+            {data.description || "Add a description..."}
+          </p>
+        </div>
+      </div>
+
+      <Dialog open={isEditing} onOpenChange={setIsEditing}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Architecture Component</DialogTitle>
+          </DialogHeader>
+          <ArchitectureNodeEditor
+            data={editData}
+            onChange={setEditData}
+            onSave={handleSave}
+            onCancel={() => setIsEditing(false)}
+          />
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+});
+
+ArchitectureNode.displayName = "ArchitectureNode";

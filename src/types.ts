@@ -2,6 +2,11 @@ import { Node, Edge } from "reactflow";
 
 export type CSVRow = string[];
 
+export enum DiagramType {
+  ERD = "erd",
+  ARCHITECTURE = "architecture"
+}
+
 export interface ColumnInfo {
   column_name: string;
   data_type: string;
@@ -23,6 +28,11 @@ export interface TableSettings {
   showFields: boolean; // Global setting to show/hide fields
 }
 
+export interface ArchitectureSettings {
+  showDescriptions: boolean;
+  showIcons: boolean;
+}
+
 export interface ERDView {
   id: string;
   name: string;
@@ -30,6 +40,7 @@ export interface ERDView {
   createdAt: number;
   updatedAt: number;
   starred: boolean;
+  type: DiagramType.ERD;
   settings: TableSettings;
   data: {
     nodes: Node[];
@@ -38,3 +49,21 @@ export interface ERDView {
     filter: string;
   };
 }
+
+export interface ArchitectureView {
+  id: string;
+  name: string;
+  description: string;
+  createdAt: number;
+  updatedAt: number;
+  starred: boolean;
+  type: DiagramType.ARCHITECTURE;
+  settings: ArchitectureSettings;
+  data: {
+    nodes: Node[];
+    edges: Edge[];
+    filter: string;
+  };
+}
+
+export type DiagramView = ERDView | ArchitectureView;

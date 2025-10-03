@@ -1,18 +1,18 @@
 import { useState, useCallback, useEffect } from "react";
-import { ERDView } from "@/types";
+import { DiagramView, ERDView, ArchitectureView, DiagramType } from "@/types";
 import { Node, Edge } from "reactflow";
 import Papa from "papaparse";
 import { processCSVData } from "@/utils/csvProcessor";
 
-interface ERDState {
+interface DiagramState {
   csvData: string[][];
-  currentView: ERDView | null;
-  views: ERDView[];
+  currentView: DiagramView | null;
+  views: DiagramView[];
 }
 
 export function useERDState() {
   // Initialize state from localStorage
-  const [state, setState] = useState<ERDState>(() => {
+  const [state, setState] = useState<DiagramState>(() => {
     const saved = localStorage.getItem("erdState");
     return saved
       ? JSON.parse(saved)
@@ -35,29 +35,53 @@ export function useERDState() {
       edges: Edge[],
       currentState?: {
         filter: string;
-        hidePrefix: string[];
+        hidePrefix?: string[];
         description?: string;
-      }
+      },
+      type: DiagramType = DiagramType.ERD
     ) => {
-      const newView: ERDView = {
+      const baseView = {
         id: crypto.randomUUID(),
         name,
         description: currentState?.description ?? "",
         createdAt: Date.now(),
         updatedAt: Date.now(),
         starred: false,
-        settings: {
-          hideTimestamps: false,
-          hideMetaFields: false,
-          showFields: false,
-        },
-        data: {
-          nodes: [...nodes],
-          edges: [...edges],
-          hidePrefix: [...(currentState?.hidePrefix ?? [])],
-          filter: currentState?.filter ?? "",
-        },
       };
+
+      let newView: DiagramView;
+
+      if (type === DiagramType.ERD) {
+        newView = {
+          ...baseView,
+          type: DiagramType.ERD,
+          settings: {
+            hideTimestamps: false,
+            hideMetaFields: false,
+            showFields: false,
+          },
+          data: {
+            nodes: [...nodes],
+            edges: [...edges],
+            hidePrefix: [...(currentState?.hidePrefix ?? [])],
+            filter: currentState?.filter ?? "",
+          },
+        } as ERDView;
+      } else {
+        newView = {
+          ...baseView,
+          type: DiagramType.ARCHITECTURE,
+          settings: {
+            showDescriptions: true,
+            showIcons: true,
+          },
+          data: {
+            nodes: [...nodes],
+            edges: [...edges],
+            filter: currentState?.filter ?? "",
+          },
+        } as ArchitectureView;
+      }
 
       setState((prev) => ({
         ...prev,
@@ -70,7 +94,7 @@ export function useERDState() {
     []
   );
 
-  const updateView = useCallback((updatedView: ERDView) => {
+  const updateView = useCallback((updatedView: DiagramView) => {
     setState((prev) => {
       const newViews = prev.views.map((view) =>
         view.id === updatedView.id ? updatedView : view
@@ -91,7 +115,7 @@ export function useERDState() {
     }));
   }, []);
 
-  const selectView = useCallback((view: ERDView | null) => {
+  const selectView = useCallback((view: DiagramView | null) => {
     setState((prev) => ({
       ...prev,
       currentView: view,

@@ -52,6 +52,7 @@ import "reactflow/dist/style.css";
 import { useERDState } from "@/hooks/useERDState";
 import { TableBulkEdit } from "./TableBulkEdit";
 import { TableEditor, TableEditorData, TABLE_COLORS } from "./TableEditor";
+import { DiagramType } from "@/types";
 
 // Move these outside the component and memoize the objects
 const defaultEdgeStyle = {
@@ -427,11 +428,10 @@ export function ERDViewer() {
         currentView={currentView}
         views={views}
         onViewSelect={(view) => {
-          setNodes(view.data.nodes);
-          setEdges(view.data.edges);
-          setFilter(view.data.filter ?? "");
-          setHidePrefix(view.data.hidePrefix ?? []);
-          handleViewUpdate(view);
+          if (view.type === DiagramType.ERD) {
+            // Navigate to the ERD URL
+            window.location.href = `/erd/${view.id}`;
+          }
         }}
         onViewDelete={deleteView}
         onCreateView={handleCreateView}
