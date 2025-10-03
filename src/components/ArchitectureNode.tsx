@@ -8,6 +8,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ArchitectureNodeEditor, ArchitectureNodeData } from "./ArchitectureNodeEditor";
+import { useERDState } from "@/hooks/useERDState";
 
 interface ArchitectureNodeProps {
   data: {
@@ -20,7 +21,8 @@ interface ArchitectureNodeProps {
   onViewUpdate?: (view: any) => void;
 }
 
-export const ArchitectureNode = memo(({ data, id, onViewUpdate }: ArchitectureNodeProps) => {
+export const ArchitectureNode = memo(({ data, id }: ArchitectureNodeProps) => {
+  const { currentView, updateView } = useERDState();
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState<ArchitectureNodeData>({
     title: data.title || "",
@@ -30,18 +32,53 @@ export const ArchitectureNode = memo(({ data, id, onViewUpdate }: ArchitectureNo
   });
 
   const handleSave = (updatedData: ArchitectureNodeData) => {
-    if (onViewUpdate) {
-      onViewUpdate({
-        nodeId: id,
-        data: {
-          title: updatedData.title,
-          description: updatedData.description,
-          icon: updatedData.icon,
-          color: updatedData.color,
-        },
-      });
+    if (!currentView) {
+      console.log("[ArchitectureNode] No current view found");
+      return;
     }
+
+    console.log("[ArchitectureNode] Starting save with updatedData:", updatedData);
+
+    // Create updated nodes with new data
+    const updatedNodes = currentView.data.nodes.map((node) => {
+      if (node.id === id) {
+        console.log("[ArchitectureNode] Found node to update:", node);
+        // Create a completely new node object to force React Flow to update
+        const updatedNode = {
+          id: node.id,
+          type: "architectureNode",
+          position: { ...node.position }, // Create new position reference
+          data: {
+            title: updatedData.title,
+            description: updatedData.description,
+            icon: updatedData.icon,
+            color: updatedData.color,
+          },
+        };
+        console.log("[ArchitectureNode] Created updated node:", updatedNode);
+        return updatedNode;
+      }
+      return { ...node, data: { ...node.data } }; // Create new references for other nodes too
+    });
+
+    console.log("[ArchitectureNode] All nodes after update:", updatedNodes);
+
+    // Create updated view with new nodes
+    const updatedView = {
+      ...currentView,
+      updatedAt: Date.now(),
+      data: {
+        ...currentView.data,
+        nodes: updatedNodes,
+      },
+    };
+
+    console.log("[ArchitectureNode] Created updated view:", updatedView);
+
+    // Close dialog and update view
     setIsEditing(false);
+    console.log("[ArchitectureNode] Dialog closed, about to update view");
+    updateView(updatedView);
   };
 
   return (

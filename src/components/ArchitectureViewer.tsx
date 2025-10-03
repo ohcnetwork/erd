@@ -45,6 +45,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import "reactflow/dist/style.css";
 import { ArchitectureNodeData } from "./ArchitectureNodeEditor";
+import { ArchitectureBulkEdit } from "./ArchitectureBulkEdit";
+import { useERDState } from "@/hooks/useERDState";
+import { DiagramType } from "@/types";
 
 const defaultEdgeStyle = {
   stroke: "#2563eb",
@@ -70,6 +73,7 @@ interface ArchitectureViewerProps {
 
 export function ArchitectureViewer({ currentView, updateView }: ArchitectureViewerProps) {
   const navigate = useNavigate();
+  const { views, createView, deleteView } = useERDState();
   const flowRef = useRef<HTMLDivElement>(null);
   const { fitView, getViewport } = useReactFlow();
 
@@ -93,41 +97,15 @@ export function ArchitectureViewer({ currentView, updateView }: ArchitectureView
 
   // Update nodes and edges when currentView changes
   useEffect(() => {
-    if (currentView) {
-      setNodes(currentView.data.nodes);
-      setEdges(currentView.data.edges);
-      setFilter(currentView.data.filter);
+    if (currentView && currentView.type === DiagramType.ARCHITECTURE) {
+      console.log("[ArchitectureViewer] Updating from currentView:", currentView);
+      setNodes(currentView.data.nodes || []);
+      setEdges(currentView.data.edges || []);
+      setFilter(currentView.data.filter || "");
     }
-  }, [currentView, setNodes, setEdges]);
+  }, [currentView?.id, currentView?.data.nodes, currentView?.data.edges, setNodes, setEdges]);
 
-  const handleViewUpdate = useCallback(
-    (updateData: { nodeId: string; data: any }) => {
-      if (!currentView) return;
 
-      const updatedNodes = nodes.map((node) => {
-        if (node.id === updateData.nodeId) {
-          return {
-            ...node,
-            data: updateData.data,
-          };
-        }
-        return node;
-      });
-
-      const updatedView = {
-        ...currentView,
-        updatedAt: Date.now(),
-        data: {
-          ...currentView.data,
-          nodes: updatedNodes,
-        },
-      };
-
-      setNodes(updatedNodes);
-      updateView(updatedView);
-    },
-    [currentView, nodes, updateView, setNodes]
-  );
 
   const handleAddComponent = useCallback(() => {
     if (!currentView || !newComponent.title.trim()) return;
@@ -197,13 +175,12 @@ export function ArchitectureViewer({ currentView, updateView }: ArchitectureView
     [setEdges]
   );
 
+  // Fix: Create stable nodeTypes without dependencies that change frequently
   const nodeTypes = useMemo(
     () => ({
-      architectureNode: (props: any) => (
-        <ArchitectureNode {...props} onViewUpdate={handleViewUpdate} />
-      ),
+      architectureNode: ArchitectureNode,
     }),
-    [handleViewUpdate]
+    []
   );
 
   const downloadPNG = useCallback(() => {
@@ -227,9 +204,23 @@ export function ArchitectureViewer({ currentView, updateView }: ArchitectureView
     <div className="flex h-screen">
       <ViewSidebar
         filter={filter}
-        onFilterChange={setFilter}
+        setFilter={setFilter}
         currentView={currentView}
-        onCreateView={() => setIsCreateViewOpen(true)}
+        views={views}
+        onViewSelect={(view) => {
+          if (view.type === DiagramType.ARCHITECTURE) {
+            // Navigate to the architecture diagram URL
+            window.location.href = `/architecture/${view.id}`;
+          }
+        }}
+        onViewDelete={deleteView}
+        onCreateView={(name: string, description: string) => {
+          createView(name, nodes, edges, {
+            filter,
+            description,
+          }, DiagramType.ARCHITECTURE);
+          setIsCreateViewOpen(false);
+        }}
       />
 
       <div className="flex-1">
@@ -266,6 +257,23 @@ export function ArchitectureViewer({ currentView, updateView }: ArchitectureView
                   <Plus className="w-4 h-4 mr-2" />
                   Add Component
                 </Button>
+                <ArchitectureBulkEdit 
+                  nodes={nodes} 
+                  onUpdate={(updatedNodes) => {
+                    setNodes(updatedNodes);
+                    if (currentView) {
+                      const updatedView = {
+                        ...currentView,
+                        data: {
+                          ...currentView.data,
+                          nodes: updatedNodes,
+                        },
+                        updatedAt: Date.now(),
+                      };
+                      updateView(updatedView);
+                    }
+                  }}
+                />
                 <Button
                   size="sm"
                   variant="outline"
@@ -321,7 +329,10 @@ export function ArchitectureViewer({ currentView, updateView }: ArchitectureView
             </Button>
             <Button
               onClick={() => {
-                // Handle create view logic here
+                createView(newViewName, nodes, edges, {
+                  filter,
+                  description: newViewDescription,
+                }, DiagramType.ARCHITECTURE);
                 setIsCreateViewOpen(false);
                 setNewViewName("");
                 setNewViewDescription("");

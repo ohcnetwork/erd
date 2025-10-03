@@ -21,7 +21,8 @@ import { Textarea } from "@/components/ui/textarea";
 
 interface ViewSidebarProps {
   filter: string;
-  onFilterChange: (value: string) => void;
+  onFilterChange?: (value: string) => void;
+  setFilter?: (value: string) => void;
   hidePrefix?: string[];
   togglePrefix?: (prefix: string) => void;
   onSaveView?: () => void;
@@ -52,6 +53,7 @@ type SortOption = (typeof SORT_OPTIONS)[number]["id"];
 export function ViewSidebar({
   filter,
   onFilterChange,
+  setFilter,
   hidePrefix = [],
   togglePrefix,
   onSaveView,
@@ -76,6 +78,11 @@ export function ViewSidebar({
 
     let result = [...views];
 
+    // Filter by current diagram type
+    if (currentView) {
+      result = result.filter(view => view.type === currentView.type);
+    }
+
     // Apply search filter
     if (viewSearch) {
       const searchLower = viewSearch.toLowerCase();
@@ -99,7 +106,7 @@ export function ViewSidebar({
           return 0;
       }
     });
-  }, [views, viewSearch, sortBy]);
+  }, [views, viewSearch, sortBy, currentView]);
 
   return (
     <div className="w-80 border-r bg-gray-50/40 h-screen flex flex-col overflow-hidden">
@@ -245,7 +252,11 @@ export function ViewSidebar({
                       ? "border-blue-500 bg-blue-50"
                       : "border-gray-200 hover:border-gray-300"
                   } cursor-pointer group`}
-                  onClick={() => onViewSelect(view)}
+                  onClick={() => {
+                    if (onViewSelect && view.type === currentView?.type) {
+                      onViewSelect(view);
+                    }
+                  }}
                 >
                   <div className="flex justify-between items-start">
                     <div>
@@ -319,7 +330,11 @@ export function ViewSidebar({
                 <Input
                   placeholder="Type to search..."
                   value={filter}
-                  onChange={(e) => onFilterChange(e.target.value)}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    if (onFilterChange) onFilterChange(value);
+                    if (setFilter) setFilter(value);
+                  }}
                   className="w-full"
                 />
               </div>
